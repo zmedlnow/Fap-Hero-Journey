@@ -49,6 +49,7 @@ A Godot 4.6 application for creating and playing structured, interactive fap-her
 | Requirement | Notes |
 |---|---|
 | **Godot 4.6 (.NET)** | Required to open or build the project |
+| **.NET SDK 8 (x64)** | Required for Godot 4.6.2's desktop C# build and publish (`net8.0`). Make sure Godot resolves SDK 8; selecting SDK 9 can make the editor's publish step fail to load `System.Runtime, Version=9.0.0.0`. Android exports additionally require .NET SDK 9 or later. |
 | **EIRTeam.FFmpeg** | Required for MP4/MKV/WebM playback. [Releases →](https://github.com/EIRTeam/EIRTeam.FFmpeg/releases) |
 | **ffmpeg + ffprobe** | Used by the builder to transcode non-H.264 video. Bundled in `bin/` on Windows; on Linux, install system ffmpeg (or set a custom path / turn auto-transcode off) — see [Transcoding](#transcoding) |
 | **Intiface Central** | Required for Buttplug device support. [Download →](https://intiface.com/central/) |
@@ -82,6 +83,23 @@ Transcodes use `libx264 -preset fast -crf 22 -pix_fmt yuv420p` with AAC audio.
 ---
 
 ## Building & Exporting
+
+Before opening Godot, check which SDK the command line selects:
+
+```powershell
+dotnet --version
+```
+
+For Windows and Linux builds, this must report **8.0.x**. If both SDK 8 and 9 are installed, the newest SDK may be selected. Close Godot and VS Code, then start them from a terminal where `dotnet --version` reports 8.0.x. For example, if SDK 8 is installed in your user profile:
+
+```powershell
+$env:DOTNET_ROOT = "$env:USERPROFILE\.dotnet"
+$env:PATH = "$env:DOTNET_ROOT;$env:PATH"
+dotnet --version
+godot --editor --path .
+```
+
+Run the commands from the project root. Leave that terminal open and launch Godot from it; if `godot` is not on `PATH`, run your installed Godot 4.6.2 .NET editor executable with `--editor --path .`. Reopen Godot after changing the SDK or `PATH`; an already-running editor keeps its old environment.
 
 1. Open the project in **Godot 4.6 (.NET)**
 2. Install export templates: **Editor → Manage Export Templates → Download and Install** (select the **.NET** variant)
