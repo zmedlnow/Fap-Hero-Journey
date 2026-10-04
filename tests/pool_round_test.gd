@@ -126,22 +126,45 @@ func test_pool_entry_paths_resolve_on_scan() -> void:
 		"funscript_path": "content/m_a.funscript",
 		"boss_image": "content/m_a.png",
 		"axis_scripts": {"L1": "content/m_a.L1.funscript"},
+		"estim_scripts": {"L1": "content/m_a.beta.funscript", "V0": "content/m_a.volume.funscript"},
 	}
 	var graph: Dictionary = {
 		"start": "n1",
 		"nodes":
 		{
 			"n1":
-			{"type": "round", "data": {"round_type": "pool", "pool_entries": [entry]}, "out": []}
+			{
+				"type": "round",
+				"data":
+				{
+					"round_type": "pool",
+					"estim_scripts": {"L1": "content/round.beta.funscript", "V0": "content/round.volume.funscript"},
+					"pool_entries": [entry],
+				},
+				"out": [],
+			}
 		},
 	}
 	JourneyGraph.resolve_paths(graph, "/base")
-	var e: Dictionary = graph["nodes"]["n1"]["data"]["pool_entries"][0]
+	var data: Dictionary = graph["nodes"]["n1"]["data"]
+	assert_str(str((data["estim_scripts"] as Dictionary)["L1"])).is_equal(
+		"/base/content/round.beta.funscript"
+	)
+	assert_str(str((data["estim_scripts"] as Dictionary)["V0"])).is_equal(
+		"/base/content/round.volume.funscript"
+	)
+	var e: Dictionary = data["pool_entries"][0]
 	assert_str(str(e["video_path"])).is_equal("/base/content/m_a.mp4")
 	assert_str(str(e["funscript_path"])).is_equal("/base/content/m_a.funscript")
 	assert_str(str(e["boss_image"])).is_equal("/base/content/m_a.png")  # boss entry's intro image
 	assert_str(str((e["axis_scripts"] as Dictionary)["L1"])).is_equal(
 		"/base/content/m_a.L1.funscript"
+	)
+	assert_str(str((e["estim_scripts"] as Dictionary)["L1"])).is_equal(
+		"/base/content/m_a.beta.funscript"
+	)
+	assert_str(str((e["estim_scripts"] as Dictionary)["V0"])).is_equal(
+		"/base/content/m_a.volume.funscript"
 	)
 
 
