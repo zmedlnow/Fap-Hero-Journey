@@ -56,6 +56,7 @@ func test_detect_estim_axis_dot_and_underscore_forms() -> void:
 	assert_str(ImportScanner.detect_estim_axis("clip.volume.funscript")).is_equal("V0")
 	assert_str(ImportScanner.detect_estim_axis("clip_volume.funscript")).is_equal("V0")
 	assert_str(ImportScanner.detect_estim_axis("clip.carrier_frequency.funscript")).is_equal("C0")
+	assert_str(ImportScanner.detect_estim_axis("clip.frequency.funscript")).is_equal("C0")
 	assert_str(ImportScanner.detect_estim_axis("clip_pulse_rise_time.funscript")).is_equal("P3")
 
 
@@ -67,7 +68,37 @@ func test_detect_estim_axis_is_case_insensitive() -> void:
 func test_detect_estim_axis_empty_for_non_estim_names() -> void:
 	assert_str(ImportScanner.detect_estim_axis("clip.funscript")).is_equal("")
 	assert_str(ImportScanner.detect_estim_axis("clip.surge.funscript")).is_equal("")
-	assert_str(ImportScanner.detect_estim_axis("clip.alpha.funscript")).is_equal("")
+	assert_str(ImportScanner.detect_estim_axis("clip.alpha.funscript")).is_equal("L0")
+
+
+func test_all_requested_restim_suffixes_are_detected() -> void:
+	var expected: Dictionary = {
+		"alpha": "L0",
+		"beta": "L1",
+		"gamma": "L2",
+		"volume": "V0",
+		"frequency": "C0",
+		"pulse_frequency": "P0",
+		"pulse_width": "P1",
+		"vib1_frequency": "V1",
+		"vib1_strength": "V2",
+		"vib1_left_right_bias": "V6",
+		"vib1_up_down_bias": "V7",
+		"vib1_random": "V3",
+		"vib2_frequency": "V4",
+		"vib2_strength": "V5",
+		"vib2_left_right_bias": "V8",
+		"vib2_up_down_bias": "V9",
+		"vib2_random": "W1",
+		"e1": "E1",
+		"e2": "E2",
+		"e3": "E3",
+		"e4": "E4",
+	}
+	for suffix: String in expected:
+		assert_str(ImportScanner.detect_estim_axis("clip.%s.funscript" % suffix)).is_equal(
+			expected[suffix]
+		)
 
 
 # The e-stim names are longer tails that overlap the vib channel suffixes
@@ -99,6 +130,29 @@ func test_alpha_and_beta_map_to_stroke_and_surge() -> void:
 	assert_str(ImportScanner.detect_funscript_axis("clip_alpha.funscript")).is_equal("L0")
 	assert_str(ImportScanner.detect_funscript_axis("clip.beta.funscript")).is_equal("L1")
 	assert_str(ImportScanner.detect_funscript_axis("clip_beta.funscript")).is_equal("L1")
+
+
+func test_alpha_beta_gamma_are_routed_only_as_restim_scripts() -> void:
+	var alpha: Dictionary = ImportScanner.classify_script_paths(
+		PackedStringArray(["clip.alpha.funscript"])
+	)
+	assert_str(alpha["funscript"]).is_empty()
+	assert_dict(alpha["axis"]).is_empty()
+	assert_dict(alpha["estim"]).contains_key_value("L0", "clip.alpha.funscript")
+
+	var beta: Dictionary = ImportScanner.classify_script_paths(
+		PackedStringArray(["clip.beta.funscript"])
+	)
+	assert_str(beta["funscript"]).is_empty()
+	assert_dict(beta["axis"]).is_empty()
+	assert_dict(beta["estim"]).contains_key_value("L1", "clip.beta.funscript")
+
+	var gamma: Dictionary = ImportScanner.classify_script_paths(
+		PackedStringArray(["clip.gamma.funscript"])
+	)
+	assert_str(gamma["funscript"]).is_empty()
+	assert_dict(gamma["axis"]).is_empty()
+	assert_dict(gamma["estim"]).contains_key_value("L2", "clip.gamma.funscript")
 
 
 # ── grouping ─────────────────────────────────────────────────────────────────

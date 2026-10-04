@@ -38,10 +38,16 @@ const DEFAULT_SERIAL_AUTO: bool = false
 const DEFAULT_RESTIM_SERVER: String = "ws://127.0.0.1:12346"
 const DEFAULT_RESTIM_PATH: String = "/tcode"
 const DEFAULT_RESTIM_AUTO: bool = false
-# Per-axis manual value (percent 0–100) for each of the 18 "E-Stim Full" axes. Motion
-# axes (L0/L1/C0/P0/V1/V2) use this only as a fallback when the round has no matching
-# funscript; the rest always send this value. Default 0 mirrors the profile's DefaultValue.
+# Per-axis manual value (percent 0–100), fallback motion-script enablement, and slider enablement.
 const DEFAULT_RESTIM_AXIS: int = 0
+const DEFAULT_RESTIM_AXIS_SOURCE: Dictionary = {
+	"L0": "L0",
+	"L1": "L1",
+	"C0": "R0",
+	"P0": "R2",
+	"V1": "L2",
+	"V2": "R1",
+}
 const DEFAULT_RANGE_MIN: int = 0
 const DEFAULT_RANGE_MAX: int = 100
 const DEFAULT_HOME_POSITION: int = 50
@@ -228,6 +234,40 @@ func get_restim_auto_connect() -> bool:
 # Manual value (percent 0–100) for one E-Stim Full axis, e.g. "V0", "P1", "C0".
 func get_restim_axis(axis: String) -> int:
 	return int(_config.get_value("restim", "axis_%s" % axis, DEFAULT_RESTIM_AXIS))
+
+
+func get_restim_axis_source(axis: String) -> String:
+	return str(
+		_config.get_value(
+			"restim",
+			"axis_source_%s" % axis,
+			DEFAULT_RESTIM_AXIS_SOURCE.get(axis, "")
+		)
+	)
+
+
+func _get_legacy_restim_axis_output_enabled(axis: String) -> bool:
+	var enabled_key: String = "axis_enabled_%s" % axis
+	if _config.has_section_key("restim", enabled_key):
+		return bool(_config.get_value("restim", enabled_key))
+	var default_key: String = "axis_use_default_%s" % axis
+	if _config.has_section_key("restim", default_key):
+		return not bool(_config.get_value("restim", default_key))
+	return DEFAULT_RESTIM_AXIS_SOURCE.has(axis)
+
+
+func get_restim_axis_fallback_enabled(axis: String) -> bool:
+	var key: String = "axis_fallback_enabled_%s" % axis
+	return bool(
+		_config.get_value("restim", key, _get_legacy_restim_axis_output_enabled(axis))
+	)
+
+
+func get_restim_axis_slider_enabled(axis: String) -> bool:
+	var key: String = "axis_slider_enabled_%s" % axis
+	return bool(
+		_config.get_value("restim", key, _get_legacy_restim_axis_output_enabled(axis))
+	)
 
 
 func get_range_min() -> int:
@@ -622,6 +662,18 @@ func set_restim_auto_connect(value: bool) -> void:
 
 func set_restim_axis(axis: String, value: int) -> void:
 	_config.set_value("restim", "axis_%s" % axis, value)
+
+
+func set_restim_axis_source(axis: String, source: String) -> void:
+	_config.set_value("restim", "axis_source_%s" % axis, source)
+
+
+func set_restim_axis_fallback_enabled(axis: String, enabled: bool) -> void:
+	_config.set_value("restim", "axis_fallback_enabled_%s" % axis, enabled)
+
+
+func set_restim_axis_slider_enabled(axis: String, enabled: bool) -> void:
+	_config.set_value("restim", "axis_slider_enabled_%s" % axis, enabled)
 
 
 func set_range_min(value: int) -> void:

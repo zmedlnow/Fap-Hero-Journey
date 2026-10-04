@@ -38,10 +38,9 @@ public partial class RestimService : Node
     // Primary stroke → restim Alpha (position).
     public const string StrokeAxis = "L0";
 
-    // Game secondary T-code axis (as keyed in FunscriptPlayer._axes) → restim axis.
-    //   L1 surge → L1 (Beta) · R0 twist → C0 (carrier) · R2 pitch → P0 (pulse freq)
-    //   L2 sway  → V1 (vib1 freq) · R1 roll → V2 (vib1 strength)
-    // (surge maps to L1 only — P1/pulse-width is a manual-only axis by design.)
+    // Normal secondary T-code axes → their fixed Restim fallback axis.
+    // L1 surge → Beta · R0 twist → frequency · R2 pitch → pulse freq
+    // L2 sway → vib1 freq · R1 roll → vib1 strength.
     public static readonly System.Collections.Generic.Dictionary<string, string> MotionAxisMap =
         new System.Collections.Generic.Dictionary<string, string>
         {
@@ -52,13 +51,12 @@ public partial class RestimService : Node
             { "R1", "V2" },
         };
 
-    // All 18 "E-Stim Full" axes, in a stable display/stream order. The first six are
-    // the motion-capable axes (driven live by funscripts when present, else by their
-    // manual value); the rest are manual-only.
+    // Restim T-code axes supported by the app, in stable display/stream order.
     public static readonly string[] AllAxes =
     {
-        "L0", "L1", "C0", "P0", "V1", "V2",
+        "L0", "L1", "L2", "C0", "P0", "V1", "V2",
         "V0", "P1", "P2", "P3", "V3", "V4", "V5", "V6", "V7", "V8", "V9", "W1",
+        "E1", "E2", "E3", "E4",
     };
 
     private ClientWebSocket _ws;

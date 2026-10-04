@@ -117,9 +117,8 @@ public partial class FunscriptPlayer : Node
     private readonly System.Collections.Generic.Dictionary<int, VibState> _vibScripts =
         new System.Collections.Generic.Dictionary<int, VibState>();
 
-    // Maps a restim (E-Stim Full) T-code axis name → a funscript that drives it directly.
-    // Populated from a round's estim_scripts (alpha/beta/volume/carrier_frequency/…). restim-only:
-    // a script here supersedes both the motion→restim mapping and the manual slider for that axis.
+    // Maps a Restim T-code axis name → its dedicated funscript. A dedicated script supersedes
+    // both the selected normal-axis fallback and the manual slider for that axis.
     private readonly System.Collections.Generic.Dictionary<string, AxisState> _restimScripts =
         new System.Collections.Generic.Dictionary<string, AxisState>();
 
@@ -248,8 +247,8 @@ public partial class FunscriptPlayer : Node
     }
 
     // ── restim (e-stim) manual axis values ──────────────────────────────────────
-    // Manual value (percent 0–100) per "E-Stim Full" axis. Motion axes use this only as a
-    // fallback when the current round has no matching funscript; the rest always use it.
+    // Manual value (percent 0–100) per Restim axis, used when no dedicated or selected
+    // motion-source script is active and Restim's own default was not selected.
     private readonly System.Collections.Generic.Dictionary<string, int> _restimManual =
         new System.Collections.Generic.Dictionary<string, int>();
 
@@ -259,23 +258,39 @@ public partial class FunscriptPlayer : Node
             _restimManual[axis] = _settings.Call("get_restim_axis", axis).AsInt32();
     }
 
-    // True when the round provides a funscript that drives this restim axis live — either a
-    // dedicated estim script (alpha/beta/carrier_frequency/…) or, for the six motion axes, the
-    // corresponding motion funscript. Used to skip the manual slider for scripted axes.
+    private string RestimFallbackSource(string restimAxis)
+    {
+        return _settings.Call("get_restim_axis_source", restimAxis).AsString();
+    }
+
+    private bool RestimFallbackEnabled(string restimAxis)
+    {
+        return _settings.Call("get_restim_axis_fallback_enabled", restimAxis).AsBool();
+    }
+
+    private bool RestimSliderEnabled(string restimAxis)
+    {
+        return _settings.Call("get_restim_axis_slider_enabled", restimAxis).AsBool();
+    }
+
+    private bool MotionSourceHasScript(string sourceAxis)
+    {
+        return sourceAxis switch
+        {
+            "L0" => _actions.Count > 0,
+            "L1" or "L2" or "R0" or "R1" or "R2" => _axes.ContainsKey(sourceAxis),
+            _ => false,
+        };
+    }
+
+    // A dedicated Restim script always wins. An enabled, active selected motion source
+    // also takes priority over the manual slider.
     private bool RestimAxisHasScript(string restimAxis)
     {
         if (_restimScripts.ContainsKey(restimAxis))
             return true;
-        switch (restimAxis)
-        {
-            case "L0": return _actions.Count > 0;   // main stroke
-            case "L1": return _axes.ContainsKey("L1");  // surge
-            case "C0": return _axes.ContainsKey("R0");  // twist
-            case "P0": return _axes.ContainsKey("R2");  // pitch
-            case "V1": return _axes.ContainsKey("L2");  // sway
-            case "V2": return _axes.ContainsKey("R1");  // roll
-            default: return false;
-        }
+        string source = RestimFallbackSource(restimAxis);
+        return RestimFallbackEnabled(restimAxis) && MotionSourceHasScript(source);
     }
 
     /// Live update of one restim manual axis value (Options slider), percent 0–100.
@@ -284,13 +299,29 @@ public partial class FunscriptPlayer : Node
     {
         percent = Math.Clamp(percent, 0, 100);
         _restimManual[axis] = percent;
-        var restim = _restim;
-        if (restim != null && restim.RestimConnected)
-            restim.SendTCode(axis, percent / 100.0);
+        SendRestimManualState();
     }
 
-    /// Send every manual axis value to restim in one frame: all manual-only axes, plus any
-    /// motion axis the current round doesn't script. Called on connect and on Play/Resume.
+    /// Live update of an axis' fallback motion source.
+    public void SetRestimAxisSource(string axis, string source)
+    {
+        SendRestimManualState();
+    }
+
+    /// Live update of whether an axis may use its selected motion-script fallback.
+    public void SetRestimAxisFallbackEnabled(string axis, bool enabled)
+    {
+        SendRestimManualState();
+    }
+
+    /// Live update of whether an axis may send its manual slider value.
+    public void SetRestimAxisSliderEnabled(string axis, bool enabled)
+    {
+        SendRestimManualState();
+    }
+
+    /// Send each axis' manual value only when its slider is enabled and neither a dedicated
+    /// script nor an enabled fixed motion-source fallback is active.
     public void SendRestimManualState()
     {
         var restim = _restim;
@@ -300,12 +331,27 @@ public partial class FunscriptPlayer : Node
         var cmds = new System.Collections.Generic.List<(string, double, uint)>();
         foreach (var axis in RestimService.AllAxes)
         {
-            if (RestimAxisHasScript(axis))
+            if (!RestimSliderEnabled(axis) || RestimAxisHasScript(axis))
                 continue;
             int percent = _restimManual.TryGetValue(axis, out int p) ? p : 0;
             cmds.Add((axis, Math.Clamp(percent, 0, 100) / 100.0, 0u));
         }
         restim.SendBatch(cmds);
+    }
+
+    private void SendRestimMotionSource(string sourceAxis, double value01, uint intervalMs)
+    {
+        var restim = _restim;
+        if (restim == null || !restim.RestimConnected)
+            return;
+
+        foreach (var axis in RestimService.AllAxes)
+        {
+            if (_restimScripts.ContainsKey(axis) || !RestimFallbackEnabled(axis))
+                continue;
+            if (RestimFallbackSource(axis) == sourceAxis)
+                restim.SendTCode(axis, value01, intervalMs);
+        }
     }
 
     /// Push updated range-clamp values directly into the player.
@@ -852,9 +898,13 @@ public partial class FunscriptPlayer : Node
 
         var restim = _restim;
         if (restim != null && restim.RestimConnected)
-            foreach (var kv in RestimService.MotionAxisMap)
-                if (!_axes.ContainsKey(kv.Key))
-                    restim.SendTCode(kv.Value, 0.5, _homeEaseMs);
+            foreach (var axis in RestimService.AllAxes)
+            {
+                string source = RestimFallbackSource(axis);
+                if (!_restimScripts.ContainsKey(axis) && RestimFallbackEnabled(axis)
+                    && source != "" && !MotionSourceHasScript(source))
+                    restim.SendTCode(axis, 0.5, _homeEaseMs);
+            }
 
         var bp = _buttplug;
         if (bp != null && bp.BpConnected)
@@ -992,14 +1042,14 @@ public partial class FunscriptPlayer : Node
             foreach (var route in _vibeRoutes)
                 bpv.SendVibrateChannel(route.Index, route.Channel, 0.0);
 
-        // restim: position axes home (L0 → user home, mapped motion axes → centre).
+        // Restim fallback routes home (L0 → user home, other motion axes → centre).
         var restim = _restim;
         if (restim != null && restim.RestimConnected)
         {
-            restim.SendTCode(RestimService.StrokeAxis, homeNorm, _homeEaseMs);
-            foreach (var kv in RestimService.MotionAxisMap)
-                if (_axes.ContainsKey(kv.Key))
-                    restim.SendTCode(kv.Value, 0.5, _homeEaseMs);
+            SendRestimMotionSource("L0", homeNorm, _homeEaseMs);
+            foreach (var source in KnownAxes)
+                if (_axes.ContainsKey(source))
+                    SendRestimMotionSource(source, 0.5, _homeEaseMs);
         }
     }
 
@@ -1120,9 +1170,8 @@ public partial class FunscriptPlayer : Node
                                 uint durMs = (uint)Math.Max(1, (int)(state.Actions[idx + 1].AtMs - state.Actions[idx].AtMs));
                                 if (serialOn)
                                     serial.SendAxis(axis, durMs, targetNorm);
-                                if (restimOn && RestimService.MotionAxisMap.TryGetValue(axis, out string rax)
-                                    && !_restimScripts.ContainsKey(rax))
-                                    restim.SendTCode(rax, targetNorm, durMs);
+                                if (restimOn)
+                                    SendRestimMotionSource(axis, targetNorm, durMs);
                             }
                             state.Index++;
                         }
@@ -1130,8 +1179,8 @@ public partial class FunscriptPlayer : Node
                 }
             }
 
-            // restim dedicated axis scripts (E-Stim Full: alpha/beta/volume/carrier_frequency/…) → restim,
-            // on the L0 clock. restim-only; each overrides the motion mapping + manual slider for its axis.
+            // Dedicated Restim axis scripts → Restim, on the L0 clock. Each overrides the selected
+            // normal-axis fallback and manual slider for its target axis.
             {
                 var restim = _restim;
                 if (restim != null && restim.RestimConnected && _restimScripts.Count > 0)
@@ -1537,7 +1586,7 @@ public partial class FunscriptPlayer : Node
         int nextPos = ProcessedStrokePos(index + 1, effects);
         uint durationMs = (uint)Math.Max(1, (int)(_actions[index + 1].AtMs - _actions[index].AtMs));
         durationMs = _CapDuration(currentPos, nextPos, durationMs);
-        restim.SendTCode(RestimService.StrokeAxis, nextPos / 100.0, durationMs);
+        SendRestimMotionSource("L0", nextPos / 100.0, durationMs);
     }
 
     // Buttplug linear stroke send for one keyframe: move toward the next processed position over the

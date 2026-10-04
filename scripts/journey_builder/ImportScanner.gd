@@ -43,12 +43,16 @@ const SCRIPT_SUFFIXES: Array[String] = [
 	"_alpha",
 	".beta",
 	"_beta",
+	".gamma",
+	"_gamma",
 	# … and the e-stim parameter scripts (restim-only). Longer names listed before the plain
 	# vib1/vib2 endings above are safe: strip/detect use exact-tail ends_with, no prefix overlap.
 	".volume",
 	"_volume",
 	".carrier_frequency",
 	"_carrier_frequency",
+	".frequency",
+	"_frequency",
 	".pulse_frequency",
 	"_pulse_frequency",
 	".pulse_width",
@@ -77,6 +81,14 @@ const SCRIPT_SUFFIXES: Array[String] = [
 	"_vib2_up_down_bias",
 	".vib2_random",
 	"_vib2_random",
+	".e1",
+	"_e1",
+	".e2",
+	"_e2",
+	".e3",
+	"_e3",
+	".e4",
+	"_e4",
 ]
 
 
@@ -110,11 +122,6 @@ static func detect_funscript_axis(path: String) -> String:
 		".roll": "R1",
 		"_pitch": "R2",
 		".pitch": "R2",
-		# restim position aliases: alpha = main stroke (L0), beta = the L1 axis.
-		"_alpha": "L0",
-		".alpha": "L0",
-		"_beta": "L1",
-		".beta": "L1",
 	}
 	for suffix: String in name_codes:
 		if stem.ends_with(suffix):
@@ -122,15 +129,18 @@ static func detect_funscript_axis(path: String) -> String:
 	return "L0"
 
 
-# Infers a restim (E-Stim Full) parameter axis from a funscript filename, e.g. "scene.volume" → "V0",
-# "scene.carrier_frequency" → "C0". These have no serial/motion equivalent and stream to restim only.
-# Returns "" when the filename carries no e-stim parameter suffix. Checked BEFORE detect_funscript_axis
-# during import (those names would otherwise fall through to the L0 main-script default).
+# Infers a Restim T-code axis from a dedicated parameter filename, e.g. "scene.volume" → "V0",
+# "scene.gamma" → "L2". Returns "" when the filename carries no Restim-specific suffix.
+# Checked BEFORE detect_funscript_axis during import so Restim suffixes are routed to their own slot.
 static func detect_estim_axis(path: String) -> String:
 	var stem: String = path.get_file().get_basename().to_lower()
 	var codes: Dictionary = {
+		"alpha": "L0",
+		"beta": "L1",
+		"gamma": "L2",
 		"volume": "V0",
 		"carrier_frequency": "C0",
+		"frequency": "C0",
 		"pulse_frequency": "P0",
 		"pulse_width": "P1",
 		"pulse_interval_random": "P2",
@@ -145,6 +155,10 @@ static func detect_estim_axis(path: String) -> String:
 		"vib2_left_right_bias": "V8",
 		"vib2_up_down_bias": "V9",
 		"vib2_random": "W1",
+		"e1": "E1",
+		"e2": "E2",
+		"e3": "E3",
+		"e4": "E4",
 	}
 	for name: String in codes:
 		if stem.ends_with("." + name) or stem.ends_with("_" + name):

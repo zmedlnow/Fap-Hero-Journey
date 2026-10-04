@@ -71,10 +71,11 @@ const VIB_SUFFIXES: Dictionary = {
 	"vib2": "vibe2",
 }
 
-# restim (E-Stim Full) parameter scripts, keyed by restim T-code axis → funscript name suffix.
-# These have no serial/motion equivalent, so they stream to restim only. (alpha/beta are NOT
-# here — they map to the L0 main / L1 surge slots so they also drive serial, like position.)
+# restim parameter scripts, keyed by restim T-code axis → funscript name suffix.
 const ESTIM_SUFFIXES: Dictionary = {
+	"L0": "alpha",
+	"L1": "beta",
+	"L2": "gamma",
 	"V0": "volume",
 	"C0": "carrier_frequency",
 	"P0": "pulse_frequency",
@@ -91,6 +92,10 @@ const ESTIM_SUFFIXES: Dictionary = {
 	"V8": "vib2_left_right_bias",
 	"V9": "vib2_up_down_bias",
 	"W1": "vib2_random",
+	"E1": "e1",
+	"E2": "e2",
+	"E3": "e3",
+	"E4": "e4",
 }
 
 # Curse catalog — the GAMEPLAY afflictions a cursed round can apply (they change

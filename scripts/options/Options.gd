@@ -185,17 +185,15 @@ var _restim_status_lbl: Label = null
 var _restim_axis_sliders: Dictionary = {}  # axis id → HSlider
 var _restim_axis_value_lbls: Dictionary = {}  # axis id → value Label
 
-# The 18 "E-Stim Full" axes, grouped for the UI. [axis id, friendly label].
-# Motion axes (L0/L1/C0/P0/V1/V2) note their driving funscript; those sliders are the
-# fallback used only when the round has no such script.
+# Restim T-code axes, grouped for the UI. [axis id, friendly label].
 const RESTIM_AXIS_GROUPS: Array = [
 	["MASTER", [["V0", "Volume"]]],
-	["POSITION", [["L0", "Alpha ← stroke"], ["L1", "Beta ← surge"]]],
-	["CARRIER", [["C0", "Carrier freq ← twist"]]],
+	["POSITION", [["L0", "Alpha"], ["L1", "Beta"], ["L2", "Gamma"]]],
+	["FREQUENCY", [["C0", "Frequency"]]],
 	[
 		"PULSE",
 		[
-			["P0", "Pulse freq ← pitch"],
+			["P0", "Pulse freq"],
 			["P1", "Pulse width"],
 			["P2", "Pulse interval random"],
 			["P3", "Pulse rise time"],
@@ -204,8 +202,8 @@ const RESTIM_AXIS_GROUPS: Array = [
 	[
 		"VIBRATION 1",
 		[
-			["V1", "Vib1 freq ← sway"],
-			["V2", "Vib1 strength ← roll"],
+			["V1", "Vib1 freq"],
+			["V2", "Vib1 strength"],
 			["V3", "Vib1 random"],
 			["V6", "Vib1 L/R bias"],
 			["V7", "Vib1 up/down bias"],
@@ -221,8 +219,17 @@ const RESTIM_AXIS_GROUPS: Array = [
 			["V9", "Vib2 up/down bias"],
 		]
 	],
+	["ELECTRODE OUTPUTS", [["E1", "E1"], ["E2", "E2"], ["E3", "E3"], ["E4", "E4"]]],
 ]
 
+const RESTIM_FALLBACK_SOURCES: Array = [
+	["L0", "Stroke"],
+	["L2", "Sway"],
+	["R2", "Pitch"],
+	["R0", "Twist"],
+	["R1", "Roll"],
+	["L1", "Surge"],
+]
 
 func _ready() -> void:
 	_apply_layout()
@@ -2799,7 +2806,7 @@ func _build_restim_axes_section() -> void:
 	section.add_child(divider)
 
 	var hint: Label = Label.new()
-	hint.text = "Motion axes (Alpha/Beta/Carrier/Pulse-freq/Vib1) follow their funscripts when a round provides them; these sliders set every other axis. Raise Volume — at 0 restim is silent. Changes apply live to a connected session."
+	hint.text = "A Restim-specific script always takes priority. Enable fallback scripts and slider output independently. If an enabled fallback script is available, it takes priority over the slider. Changes apply live."
 	hint.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	_style_label(hint, UITheme.SEPARATOR, 11, false)
 	section.add_child(hint)
@@ -2835,10 +2842,13 @@ func _add_restim_text_row(
 
 
 func _add_restim_axis_row(parent: VBoxContainer, axis: String, label_text: String) -> void:
+	var axis_box: VBoxContainer = VBoxContainer.new()
+	axis_box.add_theme_constant_override("separation", 2)
+	parent.add_child(axis_box)
+
 	var row: HBoxContainer = HBoxContainer.new()
 	row.add_theme_constant_override("separation", 16)
-	parent.add_child(row)
-
+	axis_box.add_child(row)
 	var lbl: Label = Label.new()
 	lbl.text = label_text
 	lbl.custom_minimum_size = Vector2(ROW_LABEL_W, 0)
@@ -2869,6 +2879,78 @@ func _add_restim_axis_row(parent: VBoxContainer, axis: String, label_text: Strin
 			SettingsService.set_restim_axis(axis, iv)
 			SettingsService.save()
 			FunscriptPlayer.SetRestimAxisValue(axis, iv)
+	)
+
+	var fallback_row: HBoxContainer = HBoxContainer.new()
+	fallback_row.add_theme_constant_override("separation", 8)
+	axis_box.add_child(fallback_row)
+
+	var fallback_lbl: Label = Label.new()
+	fallback_lbl.text = "Fallback source"
+	fallback_lbl.custom_minimum_size = Vector2(ROW_LABEL_W, 0)
+	_style_label(fallback_lbl, UITheme.SEPARATOR, 11, false)
+	fallback_row.add_child(fallback_lbl)
+
+	var source_dd: OptionButton = OptionButton.new()
+	source_dd.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	source_dd.focus_mode = Control.FOCUS_NONE
+	source_dd.add_item("None")
+	source_dd.set_item_metadata(0, "")
+	for source: Array in RESTIM_FALLBACK_SOURCES:
+		source_dd.add_item(str(source[1]))
+		source_dd.set_item_metadata(source_dd.item_count - 1, str(source[0]))
+	_style_option_button(source_dd)
+	fallback_row.add_child(source_dd)
+
+	var initial_source: String = SettingsService.get_restim_axis_source(axis)
+	for i: int in range(source_dd.item_count):
+		if str(source_dd.get_item_metadata(i)) == initial_source:
+			source_dd.select(i)
+			break
+	source_dd.item_selected.connect(
+		func(index: int) -> void:
+			var source: String = str(source_dd.get_item_metadata(index))
+			SettingsService.set_restim_axis_source(axis, source)
+			SettingsService.save()
+			FunscriptPlayer.SetRestimAxisSource(axis, source)
+	)
+
+	var fallback_enabled: CheckBox = CheckBox.new()
+	fallback_enabled.text = "Use fallback motion script"
+	fallback_enabled.focus_mode = Control.FOCUS_NONE
+	fallback_enabled.add_theme_color_override("font_color", UITheme.WHITE_SOFT)
+	fallback_enabled.add_theme_color_override("font_hover_color", UITheme.PURPLE_BRIGHT)
+	fallback_enabled.add_theme_font_size_override("font_size", 11)
+	fallback_enabled.tooltip_text = (
+		"When checked, the mapped normal-axis funscript drives this Restim axis if available. "
+		+ "An available fallback takes priority over the slider."
+	)
+	fallback_enabled.button_pressed = SettingsService.get_restim_axis_fallback_enabled(axis)
+	axis_box.add_child(fallback_enabled)
+	fallback_enabled.toggled.connect(
+		func(pressed: bool) -> void:
+			SettingsService.set_restim_axis_fallback_enabled(axis, pressed)
+			SettingsService.save()
+			FunscriptPlayer.SetRestimAxisFallbackEnabled(axis, pressed)
+	)
+
+	var slider_enabled: CheckBox = CheckBox.new()
+	slider_enabled.text = "Use slider value"
+	slider_enabled.focus_mode = Control.FOCUS_NONE
+	slider_enabled.add_theme_color_override("font_color", UITheme.WHITE_SOFT)
+	slider_enabled.add_theme_color_override("font_hover_color", UITheme.PURPLE_BRIGHT)
+	slider_enabled.add_theme_font_size_override("font_size", 11)
+	slider_enabled.tooltip_text = (
+		"When checked, the slider is sent if no dedicated Restim script or enabled "
+		+ "fallback motion script is available."
+	)
+	slider_enabled.button_pressed = SettingsService.get_restim_axis_slider_enabled(axis)
+	axis_box.add_child(slider_enabled)
+	slider_enabled.toggled.connect(
+		func(pressed: bool) -> void:
+			SettingsService.set_restim_axis_slider_enabled(axis, pressed)
+			SettingsService.save()
+			FunscriptPlayer.SetRestimAxisSliderEnabled(axis, pressed)
 	)
 
 	_restim_axis_sliders[axis] = slider
