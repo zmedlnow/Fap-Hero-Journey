@@ -47,6 +47,34 @@ const VIB_CHANNELS_INFO: Array = [
 	{"key": "vib2", "label": "VIB2  —  CHANNEL 1  (secondary motor)"},
 ]
 
+# Restim / E-Stim parameter-axis drop zones shown in the collapsible expander for each round.
+# key matches the estim_scripts dict key used by JourneyBuilder and GameLoop.
+const ESTIM_AXES_INFO: Array = [
+	{"key": "L0", "label": "L0  —  ALPHA"},
+	{"key": "L1", "label": "L1  —  BETA"},
+	{"key": "L2", "label": "L2  —  GAMMA"},
+	{"key": "V0", "label": "V0  —  VOLUME"},
+	{"key": "C0", "label": "C0  —  CARRIER FREQUENCY"},
+	{"key": "P0", "label": "P0  —  PULSE FREQUENCY"},
+	{"key": "P1", "label": "P1  —  PULSE WIDTH"},
+	{"key": "P2", "label": "P2  —  PULSE INTERVAL RANDOM"},
+	{"key": "P3", "label": "P3  —  PULSE RISE TIME"},
+	{"key": "V1", "label": "V1  —  VIB1 FREQUENCY"},
+	{"key": "V2", "label": "V2  —  VIB1 STRENGTH"},
+	{"key": "V3", "label": "V3  —  VIB1 RANDOM"},
+	{"key": "V4", "label": "V4  —  VIB2 FREQUENCY"},
+	{"key": "V5", "label": "V5  —  VIB2 STRENGTH"},
+	{"key": "V6", "label": "V6  —  VIB1 LEFT/RIGHT BIAS"},
+	{"key": "V7", "label": "V7  —  VIB1 UP/DOWN BIAS"},
+	{"key": "V8", "label": "V8  —  VIB2 LEFT/RIGHT BIAS"},
+	{"key": "V9", "label": "V9  —  VIB2 UP/DOWN BIAS"},
+	{"key": "W1", "label": "W1  —  VIB2 RANDOM"},
+	{"key": "E1", "label": "E1"},
+	{"key": "E2", "label": "E2"},
+	{"key": "E3", "label": "E3"},
+	{"key": "E4", "label": "E4"},
+]
+
 # Forced-modifier kinds a boss round can impose. Parallel arrays: KINDS feeds the
 # saved data, LABELS feeds the editor dropdown.
 # Gameplay forced-modifier kinds a boss round can impose. Visual/audio effects
@@ -5929,6 +5957,9 @@ func _make_side_round_editor(arr: Array, idx: int, reselect: Callable) -> Contro
 		col.add_child(_side_section_separator())
 		col.add_child(_make_vib_expander(arr, idx))
 
+		col.add_child(_side_section_separator())
+		col.add_child(_make_estim_expander(arr, idx))
+
 	# ── Rewards & state ─────────────────────────────────────────────────────────
 	col.add_child(_side_divider_line())
 	col.add_child(
@@ -7619,6 +7650,84 @@ func _make_vib_expander(arr: Array, idx: int) -> Control:
 	return wrapper
 
 
+# ── Restim / E-Stim expander ────────────────────────────────────────────────
+
+
+# Collapsed "▶ RESTIM / E-STIM SCRIPTS" expander with one DropZone per parameter axis.
+# For devices that use restim T-code parameters instead of a normal main stroke script.
+func _make_estim_expander(arr: Array, idx: int) -> Control:
+	# Ensure the dict key exists.
+	if not arr[idx].has("estim_scripts"):
+		arr[idx]["estim_scripts"] = {}
+
+	var wrapper: VBoxContainer = VBoxContainer.new()
+	wrapper.add_theme_constant_override("separation", 0)
+
+	var toggle_btn: Button = Button.new()
+	toggle_btn.text = "◌  RESTIM / E-STIM SCRIPTS  ▸"
+	toggle_btn.toggle_mode = true
+	toggle_btn.button_pressed = false
+	toggle_btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	UITheme.style_button(toggle_btn, UITheme.PURPLE_MID)
+	wrapper.add_child(toggle_btn)
+
+	var estim_panel: VBoxContainer = VBoxContainer.new()
+	estim_panel.add_theme_constant_override("separation", 6)
+	var estim_body: PanelContainer = _wrap_group_body(estim_panel, UITheme.PURPLE_MID)
+	estim_body.visible = false
+	wrapper.add_child(estim_body)
+
+	var hint: Label = Label.new()
+	hint.text = "PER-AXIS PARAMETER FUNSCRIPTS FOR RESTIM / E-STIM DEVICES.  LEAVE EMPTY TO USE THE MAIN FUNSCRIPT OR ANY OTHER PARAMETER THAT HAS ALREADY BEEN SET."
+	hint.add_theme_color_override("font_color", UITheme.SEPARATOR)
+	hint.add_theme_font_size_override("font_size", 10)
+	hint.uppercase = true
+	hint.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	estim_panel.add_child(hint)
+
+	for info: Dictionary in ESTIM_AXES_INFO:
+		var axis_key: String = info["key"]
+		estim_panel.add_child(_side_field_label(info["label"]))
+		var zone: PanelContainer = DropZoneScript.new()
+		zone.accepted_extensions = JourneyData.FUNSCRIPT_EXTENSIONS.duplicate()
+		zone.picker_title = "Select %s Funscript" % axis_key
+		zone.picker_filters = ["*.funscript,*.json ; Funscript Files", "*.* ; All Files"]
+		zone.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		var current_path: String = (arr[idx]["estim_scripts"] as Dictionary).get(axis_key, "")
+		var rm: Button = UITheme.make_icon_btn("✕", current_path == "", UITheme.MAGENTA)
+		rm.tooltip_text = UITheme.wrap_tip("Remove %s funscript" % axis_key)
+		rm.pressed.connect(func() -> void: zone.set_file(""))
+		var row: HBoxContainer = HBoxContainer.new()
+		row.add_theme_constant_override("separation", 6)
+		row.add_child(zone)
+		row.add_child(rm)
+		estim_panel.add_child(row)
+		if current_path != "":
+			zone.call_deferred("set_file", current_path, false)
+		var captured_key: String = axis_key
+		zone.file_dropped.connect(
+			func(p: String) -> void:
+				rm.disabled = (p == "")
+				if p == "":
+					(arr[idx]["estim_scripts"] as Dictionary).erase(captured_key)
+				else:
+					arr[idx]["estim_scripts"][captured_key] = p
+		)
+
+	toggle_btn.toggled.connect(
+		func(pressed: bool) -> void:
+			toggle_btn.text = (
+				"◌  RESTIM / E-STIM SCRIPTS  ▾" if pressed else "◌  RESTIM / E-STIM SCRIPTS  ▸"
+			)
+			UITheme.style_button(
+				toggle_btn, UITheme.PURPLE_BRIGHT if pressed else UITheme.PURPLE_MID
+			)
+			estim_body.visible = pressed
+		)
+
+	return wrapper
+
+
 # ── Checkpoint toggle ───────────────────────────────────────────────────────
 
 
@@ -8306,13 +8415,14 @@ func _make_pool_entry_row(
 	fzone.file_dropped.connect(func(p: String) -> void: entry["funscript_path"] = p)
 
 	# Secondary device scripts — the round editor's own expanders, bound to THIS entry, so a
-	# pooled encounter carries the same multi-axis / vibrator setup a normal round can. (The data
-	# already round-tripped: dropping a video autofills these from same-named siblings, and
-	# save/scan/runtime have always carried an entry's axis_scripts / vib_scripts — until now
-	# there was just no way to see or edit them.)
+	# pooled encounter carries the same multi-axis / vibrator / restim setup a normal round can.
+	# The data already round-trips for these maps; dropping a video autofills them from same-named
+	# siblings, and save/scan/runtime already carry the entry's axis_scripts / vib_scripts /
+	# estim_scripts.
 	var entry_arr: Array = [entry]
 	box.add_child(_make_axis_expander(entry_arr, 0))
 	box.add_child(_make_vib_expander(entry_arr, 0))
+	box.add_child(_make_estim_expander(entry_arr, 0))
 
 	# Weight (spawn rarity).
 	var wrow: HBoxContainer = HBoxContainer.new()
